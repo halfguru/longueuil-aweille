@@ -12,10 +12,10 @@ Polish a working Longueuil activity registration CLI tool into a recruiter-ready
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Fix & Harden** - Fix broken tests, add input validation, secure credential display
-- [ ] **Phase 2: Clean Architecture** - Extract shared navigation, consolidate selectors, remove dead code
-- [ ] **Phase 3: Reliability** - Replace sleep-based waits with proper Playwright primitives, add retry logic
-- [ ] **Phase 4: Test Coverage** - Unit tests for pure functions, mock-route integration tests, CI coverage gate
+- [x] **Phase 1: Fix & Harden** - Fix broken tests, add input validation, secure credential display
+- [x] **Phase 2: Clean Architecture** - Extract shared navigation, consolidate selectors, remove dead code
+- [x] **Phase 3: Reliability** - Replace sleep-based waits with proper Playwright primitives, add retry logic
+- [x] **Phase 4: Test Coverage** - Unit tests for pure functions, mock-route integration tests, CI coverage gate
 - [ ] **Phase 5: README & Presentation** - Badges, CLI demo visuals, polished config documentation
 
 ## Phase Details
@@ -82,8 +82,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Fix & Harden | 0/? | Not started | - |
-| 2. Clean Architecture | 0/? | Not started | - |
-| 3. Reliability | 0/? | Not started | - |
-| 4. Test Coverage | 0/? | Not started | - |
+| 1. Fix & Harden | 1/1 | Complete | 2026-04-13 |
+| 2. Clean Architecture | 1/1 | Complete | 2026-04-13 |
+| 3. Reliability | 1/1 | Complete | 2026-04-13 |
+| 4. Test Coverage | 1/1 | Complete | 2026-04-13 |
 | 5. README & Presentation | 0/? | Not started | - |
