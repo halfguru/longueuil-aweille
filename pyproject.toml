@@ -95,7 +95,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov-fail-under=60"
 
 [tool.coverage.run]
 source = ["src/longueuil_aweille"]
@@ -106,4 +106,9 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
 ]

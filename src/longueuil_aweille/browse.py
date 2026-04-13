@@ -3,8 +3,9 @@ from dataclasses import dataclass
 
 from playwright.async_api import Locator, Page, async_playwright
 
+from .navigation import navigate_to_search
+from .selectors import DEFAULT_BROWSE_SELECTORS, BrowseSelectors
 from .status import (
-    DEFAULT_REGISTRATION_URL,
     ActivityStatus,
     get_status_from_image_src,
     iterate_pagination,
@@ -50,20 +51,6 @@ class Activity:
     registration_dates: RegistrationDates | None = None
 
 
-@dataclass
-class BrowseSelectors:
-    search_button: str
-    activity_rows: str
-    pagination_links: str
-
-
-DEFAULT_BROWSE_SELECTORS = BrowseSelectors(
-    search_button="#ctlBlocRecherche_ctlRechercher",
-    activity_rows="tr",
-    pagination_links="a[id*='ctlLienPage']",
-)
-
-
 class ActivityScraper:
     def __init__(
         self,
@@ -71,7 +58,7 @@ class ActivityScraper:
         available_only: bool = False,
         headless: bool = True,
         timeout: int = 60,
-        registration_url: str = DEFAULT_REGISTRATION_URL,
+        registration_url: str = "https://loisir.longueuil.quebec/inscription/Pages/Anonyme/Resultat/Page.fr.aspx?m=1",
         selectors: BrowseSelectors = DEFAULT_BROWSE_SELECTORS,
     ):
         self.domain = domain
@@ -90,7 +77,12 @@ class ActivityScraper:
             page = await context.new_page()
 
             try:
-                await self._navigate_and_search(page)
+                await navigate_to_search(
+                    page,
+                    registration_url=self.registration_url,
+                    domain=self.domain,
+                    available_only=self.available_only,
+                )
                 await self._scrape_all_pages(page)
                 return self.activities
             except DomainNotFoundError:
@@ -100,61 +92,6 @@ class ActivityScraper:
                 return self.activities
             finally:
                 await browser.close()
-
-    async def _navigate_and_search(self, page: Page) -> None:
-        logger.info("Opening registration website...")
-        await page.goto(self.registration_url, wait_until="networkidle")
-
-        logger.info("Opening Disponibilités tab...")
-        await page.get_by_role("link", name="Disponibilités").click()
-        await page.wait_for_timeout(1000)
-
-        if self.available_only:
-            logger.info("Selecting 'Rechercher les activités avec places disponibles'...")
-            radio = page.locator("input[name*='ctlSelDisponibilite'][value='ctlDispoSeulement']")
-        else:
-            logger.info("Selecting 'Rechercher toutes les activités'...")
-            radio = page.locator("input[name*='ctlSelDisponibilite'][value='ctlToutes']")
-
-        await radio.click()
-        await page.wait_for_timeout(500)
-
-        if self.domain:
-            logger.info("Opening Domaines tab...")
-            await page.get_by_role("link", name="Domaines").click()
-            await page.wait_for_timeout(1000)
-
-            logger.info(f"Selecting domain: {self.domain}")
-            checkbox = page.locator(
-                f"//*[contains(text(), '{self.domain}')]/preceding::input[@type='checkbox'][1]"
-            )
-
-            if await checkbox.count() == 0:
-                available_domains = await self._get_available_domains(page)
-                raise DomainNotFoundError(self.domain, available_domains)
-
-            await checkbox.first.click()
-            await page.wait_for_timeout(1000)
-
-        logger.info("Clicking search button...")
-        await page.locator(self.selectors.search_button).click()
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(3000)
-
-    async def _get_available_domains(self, page: Page) -> list[str]:
-        checkboxes = page.locator("input[type='checkbox']")
-        domains: list[str] = []
-
-        count = await checkboxes.count()
-        for i in range(count):
-            checkbox = checkboxes.nth(i)
-            parent = checkbox.locator("xpath=..")
-            text = await parent.inner_text()
-            text = text.strip()
-            if text and len(text) > 5 and len(text) < 100:
-                domains.append(text)
-
-        return domains
 
     async def _scrape_all_pages(self, page: Page) -> None:
         await self._scrape_current_page(page)
@@ -267,7 +204,7 @@ class ActivityScraper:
                 return None
 
             await info_btn.click()
-            await page.wait_for_timeout(500)
+            await page.wait_for_selector("table.DatesInscriptions", state="visible", timeout=3000)
 
             dates_table = page.locator("table.DatesInscriptions")
             if await dates_table.count() == 0:
@@ -302,7 +239,7 @@ class ActivityScraper:
             close_btn = page.locator("a[id*='ctlFermer']")
             if await close_btn.count() > 0:
                 await close_btn.first.click()
-                await page.wait_for_timeout(300)
+                await page.wait_for_load_state("networkidle")
 
             return dates if dates.resident_start else None
 

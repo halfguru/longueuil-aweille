@@ -1,0 +1,40 @@
+# longueuil-aweille configuration
+# Copy this file to config.toml and fill in your real values.
+#
+# Usage:
+#   cp config.example.toml config.toml
+#   $EDITOR config.toml
+#   uv run aweille register
+
+# Registration URL (default is the Longueuil recreation site)
+# registration_url = "https://loisir.longueuil.quebec/inscription/Pages/Anonyme/Resultat/Page.fr.aspx?m=1"
+
+# Run browser in headless mode (no visible window)
+headless = true
+
+# How long to keep searching before giving up (seconds)
+timeout = 600
+
+# How often to refresh the page while waiting for an activity (seconds)
+refresh_interval = 5.0
+
+# Domain/category filter (e.g., "Activités aquatiques (Vieux-Longueuil)")
+# Use `uv run aweille browse` to see available domains
+domain = "Activités aquatiques (Vieux-Longueuil)"
+
+# Activity name to search for — must not be empty
+activity_name = "Parent-bébé"
+
+# Participants — each needs a carte d'accès (14 digits) and phone (10 digits)
+[[participants]]
+name = "Parent 1"
+age = 30
+carte_acces = "01234567890123"  # Your 14-digit carte d'accès number
+telephone = "5145551234"        # Your 10-digit phone number (no spaces/dashes)
+
+# Add more participants as needed:
+# [[participants]]
+# name = "Parent 2"
+# age = 32
+# carte_acces = "98765432109876"
+# telephone = "5145555678"

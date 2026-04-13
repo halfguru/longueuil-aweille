@@ -130,6 +130,10 @@ def register(
     match reg_status:
         case RegistrationStatus.SUCCESS:
             console.print(Panel("[green bold]Registration completed[/]", border_style="green"))
+        case RegistrationStatus.UNREGISTERED:
+            console.print(
+                Panel("[yellow]Registration cancelled and spot released[/]", border_style="yellow")
+            )
         case RegistrationStatus.ALREADY_ENROLLED:
             console.print(
                 Panel("[yellow]Already enrolled in this activity[/]", border_style="yellow")
@@ -189,7 +193,8 @@ def verify(
 ) -> None:
     """Verify account credentials are valid."""
     console.print()
-    console.print(f"[dim]Verifying credentials for carte: {carte_acces}[/dim]")
+    masked = f"****{carte_acces[-4:]}" if len(carte_acces) >= 4 else "****"
+    console.print(f"[dim]Verifying credentials for carte: {masked}[/dim]")
 
     bot = VerificationBot(carte_acces=carte_acces, telephone=telephone, headless=headless)
     status = asyncio.run(bot.run())

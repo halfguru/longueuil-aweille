@@ -1,8 +1,10 @@
 import logging
-from dataclasses import dataclass
 from enum import Enum
 
 from playwright.async_api import Page, async_playwright
+
+from .navigation import retry_goto
+from .selectors import DEFAULT_VERIFY_SELECTORS, VerifySelectors
 
 logger = logging.getLogger(__name__)
 
@@ -11,20 +13,6 @@ class VerificationStatus(Enum):
     VALID = "valid"
     INVALID = "invalid"
     ERROR = "error"
-
-
-@dataclass
-class VerifySelectors:
-    carte_acces_input: str
-    telephone_input: str
-    submit_button: str
-
-
-DEFAULT_VERIFY_SELECTORS = VerifySelectors(
-    carte_acces_input="input[name='numero']",
-    telephone_input="input[name='telephone']",
-    submit_button="input[name='action'][type='submit']",
-)
 
 
 class VerificationBot:
@@ -61,7 +49,7 @@ class VerificationBot:
 
     async def _verify(self, page: Page) -> VerificationStatus:
         logger.info("Opening verification page")
-        await page.goto(self.verification_url, wait_until="networkidle")
+        await retry_goto(page, self.verification_url)
 
         await self._fill_form(page)
 
