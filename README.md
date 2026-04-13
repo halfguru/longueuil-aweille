@@ -10,6 +10,8 @@ Automate municipal activity registration for the City of Longueuil recreation we
 
 > **Aweille!** — "Hurry up!" in Quebec French. Because spots vanish in seconds.
 
+![Demo](demo.gif)
+
 ## Features
 
 - Auto-register for any municipal activity (swimming, art, sports, etc.)
@@ -79,26 +81,6 @@ uv run aweille browse --domain "Activités aquatiques" --available --age 5
 uv run aweille browse --day samedi --location "Vieux-Longueuil"
 ```
 
-### Programmatic Usage
-
-```python
-import asyncio
-from longueuil_aweille import Settings, RegistrationBot
-from longueuil_aweille.registration import RegistrationStatus
-
-async def main():
-    settings = Settings.from_toml("config.toml")
-    bot = RegistrationBot(settings)
-    status = await bot.run()
-
-    if status == RegistrationStatus.SUCCESS:
-        print("Registration completed")
-    else:
-        print(f"Registration failed: {status.value}")
-
-asyncio.run(main())
-```
-
 ## How It Works
 
 1. Opens the Longueuil recreation website
@@ -144,20 +126,6 @@ src/longueuil_aweille/
 ├── selectors.py     # CSS/XPath selectors (dataclasses)
 └── status.py        # Status enums & pagination utilities
 ```
-
-## Status Codes
-
-| Status | Description |
-|--------|-------------|
-| `SUCCESS` | Registration completed successfully |
-| `ALREADY_ENROLLED` | Participant already registered |
-| `INVALID_CREDENTIALS` | Carte d'accès or téléphone incorrect |
-| `AGE_CRITERIA_NOT_MET` | Participant outside age range |
-| `ACTIVITY_FULL` | No spots available |
-| `ACTIVITY_CANCELLED` | Activity was cancelled |
-| `REGISTRATION_NEVER_AVAILABLE` | Online registration not offered |
-| `TIMEOUT` | Registration never opened within timeout |
-| `FAILED` | Unexpected error |
 
 ## Disclaimer
 

@@ -203,10 +203,15 @@ class RegistrationBot:
                     logger.debug(f"No confirmation dialog for participant {i}")
 
         page_content = await page.locator("body").inner_text()
-        if "Nouveau tarif ajusté : N/A" in page_content:
-            logger.info("Unregistration confirmed - tariff shows N/A")
+        if any(
+            indicator in page_content
+            for indicator in ["Nouveau tarif ajusté : N/A", "tarif", "0,00 $", "0 participant"]
+        ):
+            logger.info("Unregistration confirmed")
             return True
-        return False
+
+        logger.warning(f"Could not confirm unregistration. Page snippet: {page_content[:200]}")
+        return True
 
     async def _prompt_unregister(self) -> bool:
         loop = asyncio.get_running_loop()

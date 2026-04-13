@@ -45,23 +45,17 @@ async def navigate_to_search(
         selectors = DEFAULT_SEARCH_SELECTORS
 
     logger.info("Opening registration website...")
-    await retry_goto(page, registration_url, wait_until="domcontentloaded")
+    await retry_goto(page, registration_url, wait_until="networkidle")
 
     cookie_btn = page.locator("#c-p-bn")
     try:
-        await cookie_btn.click(timeout=5000)
+        await cookie_btn.wait_for(state="visible", timeout=2000)
+        await cookie_btn.click()
         logger.info("Dismissed cookie consent dialog")
-        await page.wait_for_load_state("domcontentloaded")
+        await page.wait_for_load_state("networkidle")
     except Exception:
         logger.debug("No cookie dialog found, continuing...")
 
-    if activity_name:
-        logger.info(f"Filling search keyword: {activity_name}")
-        await page.wait_for_selector(selectors.keyword_search, state="visible")
-        await page.locator(selectors.keyword_search).fill(activity_name)
-        await page.locator(selectors.search_option_or).click()
-
-    logger.info("Opening Disponibilités tab...")
     await page.get_by_role("link", name="Disponibilités").click()
     await page.wait_for_selector(selectors.available_only_radio, state="visible")
 
@@ -70,6 +64,11 @@ async def navigate_to_search(
         await page.locator(selectors.available_only_radio).click()
     else:
         await page.locator(selectors.search_all_radio).click()
+
+    if activity_name:
+        logger.info(f"Filling search keyword: {activity_name}")
+        await page.locator(selectors.keyword_search).fill(activity_name)
+        await page.locator(selectors.search_option_or).click()
 
     if domain:
         logger.info("Opening Domaines tab...")
@@ -84,4 +83,5 @@ async def navigate_to_search(
 
     logger.info("Clicking search button...")
     await page.locator(selectors.search_button).click()
-    await page.wait_for_load_state("domcontentloaded")
+    await page.wait_for_load_state("networkidle")
+    await page.wait_for_selector("table", state="visible")
