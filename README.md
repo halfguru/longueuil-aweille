@@ -1,5 +1,7 @@
 # longueuil-aweille
 
+[![CI](https://github.com/halfguru/longueuil-aweille/actions/workflows/ci.yml/badge.svg)](https://github.com/halfguru/longueuil-aweille/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-62%25-green)](https://github.com/halfguru/longueuil-aweille)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.40%2B-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/python/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
@@ -16,57 +18,38 @@ Automate municipal activity registration for the City of Longueuil recreation we
 - Auto-retry when registration is not yet open
 - Simple TOML configuration
 - CLI with rich output
+- Robust retry logic with exponential backoff for flaky networks
 
-## Installation
+## Quick Start
 
 ```bash
+# Install dependencies
 uv sync
 uv run playwright install chromium
+
+# Copy the example config and fill in your details
+cp config.example.toml config.toml
+
+# Verify your credentials work
+uv run aweille verify --carte 01234567890123 --tel 5145551234
+
+# Browse available activities
+uv run aweille browse
+
+# Run registration
+uv run aweille register
 ```
 
 ## Configuration
 
-Create a `config.toml` file:
-
-```toml
-headless = false
-timeout = 600
-refresh_interval = 5.0
-domain = "Activités aquatiques (Vieux-Longueuil)"
-activity_name = "Parent-bébé"
-
-[[participants]]
-name = "Votre Enfant"
-carte_acces = "01234567890123"
-telephone = "5145551234"
-age = 5
-```
-
-### Configuration Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `headless` | Run browser without visible window | `false` |
-| `timeout` | Maximum wait time in seconds | `600` |
-| `refresh_interval` | Seconds between page refreshes | `5.0` |
-| `domain` | Activity domain/category | Required |
-| `activity_name` | Activity name to search for | Required |
-| `participants` | List of participants | Required |
-
-### Participant Options
-
-| Option | Description |
-|--------|-------------|
-| `name` | Participant name for logging |
-| `carte_acces` | Numéro de carte d'accès (14 digits) |
-| `telephone` | Numéro de téléphone (10 digits) |
-| `age` | Participant age for validation |
+Copy [`config.example.toml`](config.example.toml) to `config.toml` and fill in your details. See the example file for all available options and documentation.
 
 ### Finding Your Domain and Activity
 
 1. Visit the [Longueuil registration site](https://loisir.longueuil.quebec/inscription/)
 2. Click "Domaines" to see available categories
 3. Note the exact activity name you want
+4. Use `uv run aweille browse` to search interactively
 
 ## Usage
 
@@ -107,7 +90,7 @@ async def main():
     settings = Settings.from_toml("config.toml")
     bot = RegistrationBot(settings)
     status = await bot.run()
-    
+
     if status == RegistrationStatus.SUCCESS:
         print("Registration completed")
     else:
@@ -125,6 +108,42 @@ asyncio.run(main())
 5. Registers when the spot becomes available
 6. Fills in participant credentials
 7. Submits the registration
+
+## Development
+
+```bash
+# Install dev dependencies
+uv sync --all-extras
+
+# Run linter
+uv run ruff check .
+
+# Run formatter
+uv run ruff format .
+
+# Run type checker
+uv run mypy src
+
+# Run tests with coverage
+uv run pytest -v --cov
+
+# Install git hooks (pre-commit)
+uv run pre-commit install
+```
+
+## Architecture
+
+```
+src/longueuil_aweille/
+├── __main__.py      # CLI entry point (Typer + Rich)
+├── config.py        # Pydantic settings & validation
+├── registration.py  # RegistrationBot — form filling & submission
+├── verify.py        # VerificationBot — credential checking
+├── browse.py        # ActivityScraper — activity discovery
+├── navigation.py    # Shared navigation helpers & retry logic
+├── selectors.py     # CSS/XPath selectors (dataclasses)
+└── status.py        # Status enums & pagination utilities
+```
 
 ## Status Codes
 

@@ -1,11 +1,12 @@
 import asyncio
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime
 
 from playwright.async_api import Page, async_playwright
 
 from .config import Settings
+from .navigation import navigate_to_search
+from .selectors import DEFAULT_CART_SELECTORS, CartSelectors
 from .status import (
     ActivityStatus,
     RegistrationStatus,
@@ -15,46 +16,20 @@ from .status import (
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class ActivityInfo:
-    name: str = ""
-    age_min: int = 0
-    age_max: int = 150
-    registration_start: str = ""
-    registration_end: str = ""
-    status: ActivityStatus = ActivityStatus.AVAILABLE
-    warnings: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Selectors:
-    keyword_search: str
-    search_option_or: str
-    available_only_radio: str
-    search_button: str
-    cart_button: str
-    dossier_input_template: str
-    nip_input_template: str
-    unregister_button_template: str
-    validate_button: str
-
-
-DEFAULT_SELECTORS = Selectors(
-    keyword_search="#ctlBlocRecherche_ctlMotsCles_ctlMotsCle",
-    search_option_or="#ctlBlocRecherche_ctlMotsCles_ctlOptionOU",
-    available_only_radio="input[name*='ctlSelDisponibilite'][value='ctlDispoSeulement']",
-    search_button="#ctlBlocRecherche_ctlRechercher",
-    cart_button="#ctlGrille_ctlMenuActionsBas_ctlAppelPanierIdent",
-    dossier_input_template="#ctlPanierActivites_ctlActivites_ctl{i:02d}_ctlRow_ctlListeIdentification_ctlListe_itm0_ctlBloc_ctlDossier",
-    nip_input_template="#ctlPanierActivites_ctlActivites_ctl{i:02d}_ctlRow_ctlListeIdentification_ctlListe_itm0_ctlBloc_ctlNip",
-    unregister_button_template="#ctlPanierActivites_ctlActivites_ctl{i:02d}_ctlRow_ctlListeIdentification_ctlListe_itm0_ctlBloc_ctlMoins",
-    validate_button="#ctlMenuActionBas_ctlAppelPanierConfirm",
-)
+_RESULT_INDICATORS = [
+    "Place réservée",
+    "êtes déjà inscrit",
+    "déjà inscrit",
+    "Aucun dossier",
+    "n'a été retrouvé",
+    "critère d'âge",
+    "ne répond pas au critère",
+    "Erreur",
+]
 
 
 class RegistrationBot:
-    def __init__(self, settings: Settings, selectors: Selectors = DEFAULT_SELECTORS):
+    def __init__(self, settings: Settings, selectors: CartSelectors = DEFAULT_CART_SELECTORS):
         self.settings = settings
         self.selectors = selectors
         self.last_activity_status: RegistrationStatus | None = None
@@ -67,7 +42,13 @@ class RegistrationBot:
             page = await context.new_page()
 
             try:
-                await self._navigate_to_search(page)
+                await navigate_to_search(
+                    page,
+                    registration_url=self.settings.registration_url,
+                    activity_name=self.settings.activity_name,
+                    domain=self.settings.domain,
+                    available_only=True,
+                )
                 result = await self._wait_and_select_activity(page)
 
                 if result == RegistrationStatus.SUCCESS:
@@ -81,7 +62,7 @@ class RegistrationBot:
                             unregistered = await self._unregister_participants(page)
                             if unregistered:
                                 logger.info("Unregistered from activity")
-                                await page.wait_for_timeout(500)
+                                await page.wait_for_load_state("networkidle")
                                 return RegistrationStatus.UNREGISTERED
                     elif status == RegistrationStatus.ALREADY_ENROLLED:
                         logger.info("Already enrolled in this activity")
@@ -108,38 +89,6 @@ class RegistrationBot:
             finally:
                 await browser.close()
 
-    async def _navigate_to_search(self, page: Page) -> None:
-        logger.info("Opening registration website...")
-        await page.goto(self.settings.registration_url, wait_until="networkidle")
-
-        logger.info("Selecting 'available only' filter...")
-        await page.get_by_role("link", name="Disponibilités").click()
-        await page.wait_for_timeout(300)
-        await page.locator(self.selectors.available_only_radio).click()
-        await page.wait_for_timeout(300)
-
-        logger.info(f"Searching for activity: {self.settings.activity_name}")
-        await page.locator(self.selectors.keyword_search).fill(self.settings.activity_name)
-        await page.locator(self.selectors.search_option_or).click()
-        await page.wait_for_timeout(300)
-
-        if self.settings.domain:
-            logger.info("Opening Domaines tab...")
-            await page.get_by_role("link", name="Domaines").click()
-            await page.wait_for_timeout(500)
-
-            logger.info(f"Selecting domain: {self.settings.domain}")
-            checkbox = page.locator(
-                f"//*[contains(text(), '{self.settings.domain}')]/preceding::input[@type='checkbox'][1]"
-            )
-            await checkbox.first.click()
-            await page.wait_for_timeout(300)
-
-        logger.info("Clicking search button...")
-        await page.locator(self.selectors.search_button).click()
-        await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(1000)
-
     async def _wait_and_select_activity(self, page: Page) -> RegistrationStatus | None:
         logger.info(f"Searching for activity: {self.settings.activity_name}")
         start_time = asyncio.get_running_loop().time()
@@ -159,7 +108,7 @@ class RegistrationBot:
             logger.info("Activity not available yet, refreshing...")
             await asyncio.sleep(self.settings.refresh_interval)
             await page.reload(wait_until="networkidle")
-            await page.wait_for_timeout(2000)
+            await page.wait_for_selector("table", state="visible")
 
         return None
 
@@ -217,7 +166,7 @@ class RegistrationBot:
 
                 logger.info("Found activity, clicking select button...")
                 await btn.click()
-                await page.wait_for_timeout(500)
+                await page.wait_for_selector(self.selectors.cart_button, state="visible")
 
                 logger.info("Adding to cart...")
                 await page.locator(self.selectors.cart_button).click()
@@ -244,13 +193,14 @@ class RegistrationBot:
             unregister_btn = page.locator(unregister_selector)
             if await unregister_btn.count() > 0:
                 await unregister_btn.first.click()
-                await page.wait_for_timeout(300)
-
                 confirm_btn = page.locator("input#OUI[value='OUI']")
-                if await confirm_btn.count() > 0:
+                try:
+                    await confirm_btn.wait_for(state="visible", timeout=2000)
                     await confirm_btn.click()
-                    await page.wait_for_timeout(500)
+                    await page.wait_for_load_state("networkidle")
                     logger.info(f"Unregistered participant {i}")
+                except TimeoutError:
+                    logger.debug(f"No confirmation dialog for participant {i}")
 
         page_content = await page.locator("body").inner_text()
         if "Nouveau tarif ajusté : N/A" in page_content:
@@ -266,13 +216,22 @@ class RegistrationBot:
         )
         return response in ("y", "yes")
 
+    async def _wait_for_result(self, page: Page, timeout_ms: int = 5000) -> str:
+        deadline = asyncio.get_running_loop().time() + timeout_ms / 1000
+        page_content = ""
+        while asyncio.get_running_loop().time() < deadline:
+            page_content = await page.locator(self.selectors.result_container).inner_text()
+            if any(ind in page_content for ind in _RESULT_INDICATORS):
+                return page_content
+            await asyncio.sleep(0.3)
+        return page_content
+
     async def _submit(self, page: Page) -> RegistrationStatus:
         logger.info("Submitting registration...")
         await page.locator(self.selectors.validate_button).click()
         await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(2000)
 
-        page_content = await page.locator("body").inner_text()
+        page_content = await self._wait_for_result(page)
 
         if "Place réservée" in page_content:
             logger.info("Place reserved - registration successful")
@@ -294,4 +253,5 @@ class RegistrationBot:
             logger.error("Error detected on page")
             return RegistrationStatus.FAILED
 
-        return RegistrationStatus.SUCCESS
+        logger.error("Unknown page state after submission")
+        return RegistrationStatus.FAILED

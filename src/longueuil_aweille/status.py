@@ -72,7 +72,7 @@ async def iterate_pagination(
 
         await page_links.nth(i).click()
         await page.wait_for_load_state("networkidle")
-        await page.wait_for_timeout(2000)
+        await page.wait_for_selector("table", state="visible")
 
         result = await callback(page)
         if result is not None:

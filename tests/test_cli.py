@@ -24,7 +24,7 @@ class TestRegister:
 
     def test_register_no_participants(self, tmp_path: Path):
         config = tmp_path / "config.toml"
-        config.write_text("headless = true\n")
+        config.write_text('headless = true\nactivity_name = "Test"\n')
         result = runner.invoke(app, ["register", "--config", str(config)])
         assert result.exit_code == 1
         assert "No participants configured" in result.stdout
