@@ -56,30 +56,32 @@ async def navigate_to_search(
     except Exception:
         logger.debug("No cookie dialog found, continuing...")
 
-    await page.get_by_role("link", name="Disponibilités").click()
-    await page.wait_for_selector(selectors.available_only_radio, state="visible")
+    # Domaines tab is the default active tab on initial page load.
+    if domain:
+        logger.info(f"Selecting domain: {domain}")
+        cb = page.locator("li.rtLI", has_text=domain).locator(".rtChk").first
+        if await cb.count() > 0:
+            await cb.click()
+            await asyncio.sleep(0.3)
+        else:
+            logger.info("Opening Domaines tab...")
+            await page.get_by_role("link", name="Domaines").click()
+            await page.wait_for_load_state("networkidle")
+            cb = page.locator("li.rtLI", has_text=domain).locator(".rtChk").first
+            if await cb.count() > 0:
+                await cb.click()
+                await asyncio.sleep(0.3)
 
     if available_only:
         logger.info("Selecting 'available only' filter...")
+        await page.get_by_role("link", name="Disponibilités").click()
+        await page.wait_for_load_state("networkidle")
+        await page.wait_for_selector(selectors.available_only_radio, state="visible")
         await page.locator(selectors.available_only_radio).click()
-    else:
-        await page.locator(selectors.search_all_radio).click()
 
     if activity_name:
         logger.info(f"Filling search keyword: {activity_name}")
         await page.locator(selectors.keyword_search).fill(activity_name)
-        await page.locator(selectors.search_option_or).click()
-
-    if domain:
-        logger.info("Opening Domaines tab...")
-        await page.get_by_role("link", name="Domaines").click()
-        await page.wait_for_selector("input[type='checkbox']", state="visible")
-
-        logger.info(f"Selecting domain: {domain}")
-        checkbox = page.locator(
-            f"//*[contains(text(), '{domain}')]/preceding::input[@type='checkbox'][1]"
-        )
-        await checkbox.first.click()
 
     logger.info("Clicking search button...")
     await page.locator(selectors.search_button).click()

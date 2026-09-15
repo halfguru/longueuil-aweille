@@ -80,7 +80,8 @@ def test_settings_custom_values():
 
 def test_settings_from_toml_valid(tmp_path):
     config = tmp_path / "config.toml"
-    config.write_text("""
+    config.write_text(
+        """
 headless = true
 timeout = 300
 refresh_interval = 2.5
@@ -98,7 +99,9 @@ name = "Bob"
 carte_acces = "98765432109876"
 telephone = "4505559876"
 age = 8
-""")
+""",
+        encoding="utf-8",
+    )
     settings = Settings.from_toml(config)
     assert settings.headless is True
     assert settings.timeout == 300
@@ -152,3 +155,8 @@ def test_settings_from_toml_invalid_timeout(tmp_path):
     config.write_text('activity_name = "Test"\ntimeout = -5\n')
     with pytest.raises(ValidationError, match="greater than 0"):
         Settings.from_toml(config)
+
+
+def test_settings_with_schedule():
+    settings = Settings(activity_name="Parent et enfant 3", schedule="10:25")
+    assert settings.schedule == "10:25"

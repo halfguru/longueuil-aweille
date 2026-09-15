@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from playwright.async_api import Locator, Page, async_playwright
 
+from .dates import fetch_registration_window
 from .navigation import navigate_to_search
 from .selectors import DEFAULT_BROWSE_SELECTORS, BrowseSelectors
 from .status import (
@@ -94,8 +95,6 @@ class ActivityScraper:
                 await browser.close()
 
     async def _scrape_all_pages(self, page: Page) -> None:
-        await self._scrape_current_page(page)
-
         async def scrape_page(p: Page) -> None:
             await self._scrape_current_page(p)
             return None
@@ -198,54 +197,13 @@ class ActivityScraper:
     async def _get_registration_dates(
         self, info_cell: Locator, page: Page
     ) -> RegistrationDates | None:
-        try:
-            info_btn = info_cell.locator("input[type='image'][title*=\"dates d'inscription\"]")
-            if await info_btn.count() == 0:
-                return None
-
-            await info_btn.click()
-            await page.wait_for_selector("table.DatesInscriptions", state="visible", timeout=3000)
-
-            dates_table = page.locator("table.DatesInscriptions")
-            if await dates_table.count() == 0:
-                return None
-
-            dates = RegistrationDates()
-            current_lieu = ""
-
-            rows = await dates_table.first.locator("tr").all()
-            for row in rows:
-                lieu_cell = row.locator("td.Lieu")
-                if await lieu_cell.count() > 0:
-                    current_lieu = await lieu_cell.inner_text()
-
-                if "Internet" not in current_lieu:
-                    continue
-
-                clientelle_cell = row.locator("td.Clientele")
-                if await clientelle_cell.count() == 0:
-                    continue
-
-                clientelle = await clientelle_cell.inner_text()
-                if "Résident" not in clientelle or "Non" in clientelle:
-                    continue
-
-                date_cells = row.locator("td.Dates")
-                if await date_cells.count() >= 2:
-                    dates.resident_start = (await date_cells.nth(0).inner_text()).strip()
-                    dates.resident_end = (await date_cells.nth(1).inner_text()).strip()
-                    break
-
-            close_btn = page.locator("a[id*='ctlFermer']")
-            if await close_btn.count() > 0:
-                await close_btn.first.click()
-                await page.wait_for_load_state("networkidle")
-
-            return dates if dates.resident_start else None
-
-        except Exception as e:
-            logger.debug(f"Error getting registration dates: {e}")
-            return None
+        window = await fetch_registration_window(info_cell, page)
+        if window and window.raw_resident_start:
+            return RegistrationDates(
+                resident_start=window.raw_resident_start,
+                resident_end=window.raw_resident_end,
+            )
+        return None
 
     def filter_activities(
         self,

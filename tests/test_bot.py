@@ -53,6 +53,7 @@ def test_registration_status_enum():
     assert RegistrationStatus.ACTIVITY_FULL.value == "activity_full"
     assert RegistrationStatus.ACTIVITY_CANCELLED.value == "activity_cancelled"
     assert RegistrationStatus.REGISTRATION_NEVER_AVAILABLE.value == "registration_never_available"
+    assert RegistrationStatus.NOT_YET_OPEN.value == "not_yet_open"
     assert RegistrationStatus.FAILED.value == "failed"
     assert RegistrationStatus.TIMEOUT.value == "timeout"
 

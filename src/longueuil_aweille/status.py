@@ -29,6 +29,7 @@ class RegistrationStatus(Enum):
     ACTIVITY_FULL = "activity_full"
     ACTIVITY_CANCELLED = "activity_cancelled"
     REGISTRATION_NEVER_AVAILABLE = "registration_never_available"
+    NOT_YET_OPEN = "not_yet_open"
     FAILED = "failed"
     TIMEOUT = "timeout"
 

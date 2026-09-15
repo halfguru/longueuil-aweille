@@ -9,6 +9,7 @@ from rich.table import Table
 from . import __version__
 from .browse import ActivityScraper, DomainNotFoundError
 from .config import Settings
+from .dates import format_time_remaining
 from .registration import RegistrationBot
 from .status import ActivityStatus, RegistrationStatus
 from .verify import VerificationBot, VerificationStatus
@@ -69,6 +70,11 @@ def register(
         "--verify/--no-verify",
         help="Verify credentials before registration",
     ),
+    wait: bool = typer.Option(
+        None,
+        "--wait/--no-wait",
+        help="Wait/standby until registration opens if not open yet",
+    ),
 ) -> None:
     """Run the registration bot."""
     console.print()
@@ -79,6 +85,8 @@ def register(
         settings.headless = headless
     if timeout is not None:
         settings.timeout = timeout
+    if wait is not None:
+        settings.wait_until_open = wait
 
     if not settings.participants:
         console.print("[red]Error: No participants configured[/red]")
@@ -107,6 +115,8 @@ def register(
     info_table = Table(show_header=False, box=None, padding=(0, 2))
     info_table.add_row("[bold]Domain:[/]", settings.domain)
     info_table.add_row("[bold]Activity:[/]", settings.activity_name)
+    if settings.schedule:
+        info_table.add_row("[bold]Schedule:[/]", settings.schedule)
     info_table.add_row("[bold]Participants:[/]", str(len(settings.participants)))
 
     console.print(
@@ -122,8 +132,12 @@ def register(
 
     console.print()
 
-    reg_bot = RegistrationBot(settings)
-    reg_status = asyncio.run(reg_bot.run())
+    reg_bot = RegistrationBot(settings, console=console)
+    try:
+        reg_status = asyncio.run(reg_bot.run())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Registration cancelled by user.[/yellow]")
+        raise typer.Exit(0) from None
 
     console.print()
 
@@ -175,6 +189,21 @@ def register(
                 Panel(
                     "[bold red]Online registration not available for this activity[/]",
                     border_style="red",
+                )
+            )
+            raise typer.Exit(1)
+        case RegistrationStatus.NOT_YET_OPEN:
+            window_info = ""
+            if reg_bot.registration_window and reg_bot.registration_window.raw_resident_start:
+                time_rem = ""
+                if reg_bot.registration_window.resident_start:
+                    time_rem = f" [dim](in {format_time_remaining(reg_bot.registration_window.resident_start)})[/dim]"
+                window_info = f"\n[bold]Opens:[/] [cyan]{reg_bot.registration_window.raw_resident_start}[/cyan]{time_rem}"
+            console.print(
+                Panel(
+                    f"[bold yellow]Registration is not open yet[/]{window_info}\n[dim]Please run the command closer to the registration time.[/dim]",
+                    border_style="yellow",
+                    title="[bold]Registration Window[/]",
                 )
             )
             raise typer.Exit(1)

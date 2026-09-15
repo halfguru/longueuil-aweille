@@ -44,6 +44,14 @@ class Settings(BaseSettings):
         default="",
         description="Activity name to search for (e.g., 'Parent-bébé', 'Niveau 1')",
     )
+    schedule: str = Field(
+        default="",
+        description="Optional schedule/time filter (e.g., '10:25', 'Sam')",
+    )
+    wait_until_open: bool = Field(
+        default=True,
+        description="Wait/standby until registration opens if not open yet",
+    )
     participants: list[Participant] = Field(default_factory=list)
 
     @field_validator("activity_name")
