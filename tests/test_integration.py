@@ -4,6 +4,8 @@ import pytest
 from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import async_playwright
 
+from longueuil_aweille.config import Settings
+from longueuil_aweille.registration import RegistrationBot, RegistrationStatus
 from longueuil_aweille.selectors import DEFAULT_CART_SELECTORS, DEFAULT_VERIFY_SELECTORS
 
 SUCCESS_HTML = "<html><body><p>Place r&eacute;serv&eacute;e</p></body></html>"
@@ -561,7 +563,7 @@ async def test_try_select_not_yet():
         settings = Settings(activity_name="Test Activity")
         bot = RegistrationBot(settings)
         result = await bot._try_select_on_page(page)
-        assert result == RegistrationStatus.FAILED
+        assert result == RegistrationStatus.NOT_YET_OPEN
         await browser.close()
 
 
@@ -685,4 +687,116 @@ async def test_verify_run_valid():
 
         result = await mock_run()
         assert result == VerificationStatus.VALID
+        await browser.close()
+
+
+async def test_fetch_registration_window():
+    from datetime import datetime
+
+    from longueuil_aweille.dates import fetch_registration_window
+
+    dates_html = """<html><body>
+    <table><tr>
+    <td>
+      <input type="image" id="infoBtn" title="dates d'inscription" onclick="document.getElementById('datesModal').style.display='block';">
+    </td>
+    </tr></table>
+    <div id="datesModal">
+      <table class="DatesInscriptions">
+        <tr>
+          <td class="Lieu">Internet</td>
+          <td class="Clientele">Résident</td>
+          <td class="Dates">16 Septembre 2026, 18:30</td>
+          <td class="Dates">30 Septembre 2026, 08:00</td>
+        </tr>
+      </table>
+      <a id="ctlFermer" onclick="document.getElementById('datesModal').style.display='none';">Fermer</a>
+    </div>
+    </body></html>"""
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        await page.route(
+            re.compile(r".*"),
+            lambda route: route.fulfill(body=dates_html, content_type="text/html; charset=utf-8"),
+        )
+        await page.goto("http://mock-test.local/dates")
+
+        container = page.locator("table tr td").first
+        window = await fetch_registration_window(container, page)
+
+        assert window is not None
+        assert window.raw_resident_start == "16 Septembre 2026, 18:30"
+        assert window.resident_start == datetime(2026, 9, 16, 18, 30)
+        assert window.resident_end == datetime(2026, 9, 30, 8, 0)
+        await browser.close()
+
+
+async def test_try_select_not_yet_no_selecteur():
+    html = """<html><body>
+    <table>
+      <tr>
+        <td>Parent et enfant 3</td>
+        <td>VLNAEPE3</td>
+        <td>Sam. 10:25-10:55</td>
+        <td><input type="image" id="infoBtn" title="dates d'inscription"></td>
+        <td>Inscription non disponible actuellement</td>
+      </tr>
+    </table>
+    </body></html>"""
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        await page.route(
+            re.compile(r".*"),
+            lambda route: route.fulfill(body=html, content_type="text/html; charset=utf-8"),
+        )
+        await page.goto("http://mock-test.local/search")
+
+        settings = Settings(activity_name="Parent et enfant 3")
+        bot = RegistrationBot(settings)
+        result = await bot._try_select_on_page(page)
+        assert result == RegistrationStatus.NOT_YET_OPEN
+        await browser.close()
+
+
+async def test_try_select_with_schedule_filter():
+    html = """<html><body>
+    <table>
+      <tr>
+        <td>Parent et enfant 3</td>
+        <td>Sam. 12:10-12:40</td>
+        <td><input type="image" id="Selecteur1" src="Selecteur.gif"></td>
+      </tr>
+      <tr>
+        <td>Parent et enfant 3</td>
+        <td>Sam. 10:25-10:55</td>
+        <td><input type="image" id="Selecteur2" src="Selecteur.gif"></td>
+      </tr>
+    </table>
+    <button id="ctlGrille_ctlMenuActionsBas_ctlAppelPanierIdent">Cart</button>
+    </body></html>"""
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        await page.route(
+            re.compile(r".*"),
+            lambda route: route.fulfill(body=html, content_type="text/html; charset=utf-8"),
+        )
+        await page.goto("http://mock-test.local/search")
+
+        # Looking specifically for 10:25
+        settings = Settings(activity_name="Parent et enfant 3", schedule="10:25")
+        bot = RegistrationBot(settings)
+        result = await bot._try_select_on_page(page)
+        assert result == RegistrationStatus.SUCCESS
         await browser.close()

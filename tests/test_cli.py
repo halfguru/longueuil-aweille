@@ -102,6 +102,56 @@ age = 30
         settings_arg = mock_reg_bot.call_args[0][0]
         assert settings_arg.timeout == 30
 
+    @patch("longueuil_aweille.__main__.RegistrationBot")
+    def test_register_no_wait_option(self, mock_reg_bot, tmp_path: Path):
+        config = tmp_path / "config.toml"
+        config.write_text("""
+headless = true
+activity_name = "Test Activity"
+
+[[participants]]
+name = "Test User"
+carte_acces = "01234567890123"
+telephone = "5145551234"
+age = 30
+""")
+
+        mock_reg_instance = MagicMock()
+        mock_reg_instance.run = AsyncMock(return_value=RegistrationStatus.NOT_YET_OPEN)
+        mock_reg_instance.registration_window = None
+        mock_reg_bot.return_value = mock_reg_instance
+
+        result = runner.invoke(
+            app, ["register", "--config", str(config), "--no-wait", "--no-verify"]
+        )
+
+        assert result.exit_code == 1
+        settings_arg = mock_reg_bot.call_args[0][0]
+        assert settings_arg.wait_until_open is False
+
+    @patch("longueuil_aweille.__main__.RegistrationBot")
+    def test_register_keyboard_interrupt(self, mock_reg_bot, tmp_path: Path):
+        config = tmp_path / "config.toml"
+        config.write_text("""
+headless = true
+activity_name = "Test Activity"
+
+[[participants]]
+name = "Test User"
+carte_acces = "01234567890123"
+telephone = "5145551234"
+age = 30
+""")
+
+        mock_reg_instance = MagicMock()
+        mock_reg_instance.run = AsyncMock(side_effect=KeyboardInterrupt)
+        mock_reg_bot.return_value = mock_reg_instance
+
+        result = runner.invoke(app, ["register", "--config", str(config), "--no-verify"])
+
+        assert result.exit_code == 0
+        assert "cancelled by user" in result.stdout.lower()
+
 
 class TestVerify:
     @patch("longueuil_aweille.__main__.VerificationBot")

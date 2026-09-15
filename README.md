@@ -15,9 +15,12 @@ Automate municipal activity registration for the City of Longueuil recreation we
 ## Features
 
 - Auto-register for any municipal activity (swimming, art, sports, etc.)
+- Automatic registration opening detection and live terminal countdown
+- Two-stage standby mode (closes browser when >5 min away to conserve RAM and prevent session timeout)
+- Windows system sleep prevention while waiting for registration to open
 - Credential verification before registration
 - Multiple participant support
-- Auto-retry when registration is not yet open
+- Specific time slot / schedule filtering
 - Simple TOML configuration
 - CLI with rich output
 - Robust retry logic with exponential backoff for flaky networks
@@ -56,8 +59,11 @@ Copy [`config.example.toml`](config.example.toml) to `config.toml` and fill in y
 ## Usage
 
 ```bash
-# Run registration (verifies credentials by default)
+# Run registration (verifies credentials and stands by with live countdown)
 uv run aweille register
+
+# Check registration status and exit immediately without waiting
+uv run aweille register --no-wait
 
 # Skip credential verification
 uv run aweille register --no-verify
@@ -83,11 +89,11 @@ uv run aweille browse --day samedi --location "Vieux-Longueuil"
 
 ## How It Works
 
-1. Opens the Longueuil recreation website
-2. Selects the configured domain (activity category)
-3. Searches for the activity by name across all pages
-4. Waits for registration to open (refreshes periodically)
-5. Registers when the spot becomes available
+1. Opens the Longueuil recreation website and navigates to the target activity
+2. Inspects registration opening dates and times for residents
+3. If registration opens in >5 minutes, closes the browser and enters standby mode with a live countdown (preventing system sleep)
+4. Wakes up at T-5 minutes, relaunches the browser, and begins high-speed polling at T-15s
+5. Selects the course immediately upon opening
 6. Fills in participant credentials
 7. Submits the registration
 
@@ -119,6 +125,7 @@ uv run pre-commit install
 src/longueuil_aweille/
 ├── __main__.py      # CLI entry point (Typer + Rich)
 ├── config.py        # Pydantic settings & validation
+├── dates.py         # French date parsing, countdowns & sleep prevention
 ├── registration.py  # RegistrationBot — form filling & submission
 ├── verify.py        # VerificationBot — credential checking
 ├── browse.py        # ActivityScraper — activity discovery

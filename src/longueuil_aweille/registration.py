@@ -3,8 +3,18 @@ import logging
 from datetime import datetime
 
 from playwright.async_api import Page, async_playwright
+from rich.console import Console
+from rich.panel import Panel
 
 from .config import Settings
+from .dates import (
+    RegistrationWindow,
+    countdown_sleep,
+    fetch_registration_window,
+    format_time_remaining,
+    prevent_sleep,
+    restore_sleep,
+)
 from .navigation import navigate_to_search
 from .selectors import DEFAULT_CART_SELECTORS, CartSelectors
 from .status import (
@@ -29,13 +39,100 @@ _RESULT_INDICATORS = [
 
 
 class RegistrationBot:
-    def __init__(self, settings: Settings, selectors: CartSelectors = DEFAULT_CART_SELECTORS):
+    def __init__(
+        self,
+        settings: Settings,
+        selectors: CartSelectors = DEFAULT_CART_SELECTORS,
+        console: Console | None = None,
+    ):
         self.settings = settings
         self.selectors = selectors
+        self.console = console
         self.last_activity_status: RegistrationStatus | None = None
+        self.registration_window: RegistrationWindow | None = None
 
     async def run(self) -> RegistrationStatus:
+        prevent_sleep()
+        try:
+            return await self._run_lifecycle()
+        finally:
+            restore_sleep()
+
+    async def _run_lifecycle(self) -> RegistrationStatus:
         logger.info("Starting registration bot...")
+
+        # Step 1: Pre-flight check (discover course & opening window)
+        if self.console:
+            with self.console.status(
+                "[bold cyan]Checking activity and registration schedule...[/]",
+                spinner="dots",
+            ):
+                result = await self._run_single_session()
+        else:
+            result = await self._run_single_session()
+
+        if result != RegistrationStatus.NOT_YET_OPEN:
+            return result
+
+        if not self.registration_window or not self.registration_window.resident_start:
+            return RegistrationStatus.NOT_YET_OPEN
+
+        if not self.settings.wait_until_open:
+            logger.info(
+                f"Registration opens at {self.registration_window.raw_resident_start}. "
+                "Exiting because wait_until_open is disabled."
+            )
+            return RegistrationStatus.NOT_YET_OPEN
+
+        secs = self.registration_window.seconds_until_open()
+        if secs <= 0:
+            return await self._run_single_session()
+
+        # Distant standby: if more than 5 minutes away (300 seconds), close browser and sleep
+        if secs > 300:
+            standby_secs = secs - 300
+            if self.console:
+                schedule_str = f" ({self.settings.schedule})" if self.settings.schedule else ""
+                rem_str = format_time_remaining(self.registration_window.resident_start)
+                panel_text = (
+                    f"[bold]Target Activity:[/] {self.settings.activity_name}{schedule_str}\n"
+                    f"[bold]Registration Opens:[/] [cyan]{self.registration_window.raw_resident_start}[/cyan] [dim](in {rem_str})[/dim]\n\n"
+                    f"[green]*[/] Browser closed to conserve memory\n"
+                    f"[green]*[/] System sleep prevented\n"
+                    f"[green]*[/] Will automatically wake up 5 minutes before opening\n\n"
+                    f"[dim]Press Ctrl+C at any time to cancel.[/dim]"
+                )
+                self.console.print()
+                self.console.print(
+                    Panel(
+                        panel_text,
+                        title="[bold yellow]Standing By For Registration[/]",
+                        border_style="yellow",
+                    )
+                )
+                self.console.print()
+
+            logger.info(
+                f"Registration opens at {self.registration_window.raw_resident_start} "
+                f"(in {format_time_remaining(self.registration_window.resident_start)}). "
+                f"Standing by until 5 minutes before opening..."
+            )
+            await countdown_sleep(
+                standby_secs,
+                target=self.registration_window.resident_start,
+                label=f"registration opens at {self.registration_window.raw_resident_start}",
+                console=self.console,
+            )
+            if self.console:
+                self.console.print(
+                    "[green]*[/] T-5 minutes reached! Launching browser for active registration session..."
+                )
+            logger.info("T-5 minutes reached! Launching browser for active registration session...")
+
+        # Step 2: Active registration session
+        return await self._run_single_session()
+
+    async def _run_single_session(self) -> RegistrationStatus:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(headless=self.settings.headless)
             context = await browser.new_context()
@@ -47,7 +144,7 @@ class RegistrationBot:
                     registration_url=self.settings.registration_url,
                     activity_name=self.settings.activity_name,
                     domain=self.settings.domain,
-                    available_only=True,
+                    available_only=False,
                 )
                 result = await self._wait_and_select_activity(page)
 
@@ -57,13 +154,14 @@ class RegistrationBot:
 
                     if status == RegistrationStatus.SUCCESS:
                         logger.info("Registration completed successfully!")
-                        should_unregister = await self._prompt_unregister()
-                        if should_unregister:
-                            unregistered = await self._unregister_participants(page)
-                            if unregistered:
-                                logger.info("Unregistered from activity")
-                                await page.wait_for_load_state("networkidle")
-                                return RegistrationStatus.UNREGISTERED
+                        if not self.settings.headless:
+                            should_unregister = await self._prompt_unregister()
+                            if should_unregister:
+                                unregistered = await self._unregister_participants(page)
+                                if unregistered:
+                                    logger.info("Unregistered from activity")
+                                    await page.wait_for_load_state("networkidle")
+                                    return RegistrationStatus.UNREGISTERED
                     elif status == RegistrationStatus.ALREADY_ENROLLED:
                         logger.info("Already enrolled in this activity")
                     elif status == RegistrationStatus.INVALID_CREDENTIALS:
@@ -74,7 +172,10 @@ class RegistrationBot:
                     return status
 
                 if self.last_activity_status:
-                    logger.error(f"Activity found but: {self.last_activity_status.value}")
+                    if self.last_activity_status != RegistrationStatus.NOT_YET_OPEN:
+                        logger.error(f"Activity found but: {self.last_activity_status.value}")
+                    else:
+                        logger.info(f"Activity found but: {self.last_activity_status.value}")
                     return self.last_activity_status
 
                 logger.error("Registration timed out - activity not found")
@@ -82,9 +183,12 @@ class RegistrationBot:
 
             except Exception as e:
                 logger.error(f"Registration failed: {e}")
-                screenshot_path = f"error-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-                await page.screenshot(path=screenshot_path)
-                logger.info(f"Screenshot saved to {screenshot_path}")
+                try:
+                    screenshot_path = f"error-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+                    await page.screenshot(path=screenshot_path)
+                    logger.info(f"Screenshot saved to {screenshot_path}")
+                except Exception as se:
+                    logger.debug(f"Could not take screenshot: {se}")
                 return RegistrationStatus.FAILED
             finally:
                 await browser.close()
@@ -104,6 +208,42 @@ class RegistrationBot:
             if result == RegistrationStatus.SUCCESS:
                 logger.info("Activity found and selected!")
                 return result
+
+            if (
+                result == RegistrationStatus.NOT_YET_OPEN
+                and self.registration_window
+                and self.registration_window.resident_start
+            ):
+                secs = self.registration_window.seconds_until_open()
+                if secs > 300:
+                    # More than 5 minutes away - return NOT_YET_OPEN so browser closes for distant standby
+                    logger.info(
+                        f"Registration for '{self.settings.activity_name}' opens at "
+                        f"{self.registration_window.raw_resident_start} "
+                        f"(in {format_time_remaining(self.registration_window.resident_start)})."
+                    )
+                    return RegistrationStatus.NOT_YET_OPEN
+                elif secs > 15:
+                    # Between 15 seconds and 5 minutes away - sleep on page until 15s before opening
+                    sleep_time = secs - 15
+                    logger.info(
+                        f"Registration opens in {format_time_remaining(self.registration_window.resident_start)} "
+                        f"(at {self.registration_window.raw_resident_start}). "
+                        f"Sleeping for {int(sleep_time)}s until 15s before opening..."
+                    )
+                    await countdown_sleep(
+                        sleep_time,
+                        target=self.registration_window.resident_start,
+                        label=f"registration opens at {self.registration_window.raw_resident_start}",
+                        console=self.console,
+                    )
+                    # Reset timeout counter after sleep so full timeout applies to active polling
+                    start_time = asyncio.get_running_loop().time()
+                    if self.console:
+                        self.console.print(
+                            "[green]●[/] T-15s reached! Starting active registration polling..."
+                        )
+                    logger.info("Awakened! Starting active registration polling...")
 
             logger.info("Activity not available yet, refreshing...")
             await asyncio.sleep(self.settings.refresh_interval)
@@ -127,7 +267,10 @@ class RegistrationBot:
                 self.last_activity_status = r
             return None
 
-        return await iterate_pagination(page, try_page)
+        paginated_result = await iterate_pagination(page, try_page)
+        if paginated_result is not None:
+            return paginated_result
+        return self.last_activity_status
 
     async def _try_select_on_page(self, page: Page) -> RegistrationStatus | None:
         activity_name = self.settings.activity_name
@@ -139,6 +282,11 @@ class RegistrationBot:
         for i in range(count):
             el = activity_elements.nth(i)
             parent_row = el.locator("xpath=ancestor::tr[1]")
+            row_content = await parent_row.inner_text()
+
+            if self.settings.schedule and self.settings.schedule.lower() not in row_content.lower():
+                continue
+
             select_btn = parent_row.locator("input[type='image'][id*='Selecteur']")
             btn_count = await select_btn.count()
 
@@ -152,7 +300,6 @@ class RegistrationBot:
                     logger.info("Activity found but online registration never available")
                     return RegistrationStatus.REGISTRATION_NEVER_AVAILABLE
 
-                row_content = await parent_row.inner_text()
                 if "COMPLET" in row_content.upper():
                     logger.info("Activity found but is COMPLET (full)")
                     return RegistrationStatus.ACTIVITY_FULL
@@ -160,8 +307,14 @@ class RegistrationBot:
                     logger.info("Activity found but is ANNULÉE (cancelled)")
                     return RegistrationStatus.ACTIVITY_CANCELLED
 
-                if status == ActivityStatus.NOT_YET or status == ActivityStatus.FULL:
-                    logger.info(f"Found activity but not available: {status.value}")
+                if status == ActivityStatus.NOT_YET:
+                    logger.info("Activity found but registration not open yet")
+                    if self.registration_window is None:
+                        self.registration_window = await fetch_registration_window(parent_row, page)
+                    return RegistrationStatus.NOT_YET_OPEN
+
+                if status == ActivityStatus.FULL:
+                    logger.info("Activity found but not available: full")
                     return RegistrationStatus.FAILED
 
                 logger.info("Found activity, clicking select button...")
@@ -173,6 +326,20 @@ class RegistrationBot:
                 await page.wait_for_load_state("networkidle")
 
                 return RegistrationStatus.SUCCESS
+            else:
+                if "COMPLET" in row_content.upper():
+                    logger.info("Activity found but is COMPLET (full)")
+                    return RegistrationStatus.ACTIVITY_FULL
+                if "ANNULÉE" in row_content.upper():
+                    logger.info("Activity found but is ANNULÉE (cancelled)")
+                    return RegistrationStatus.ACTIVITY_CANCELLED
+
+                info_btn = parent_row.locator("input[type='image'][title*=\"dates d'inscription\"]")
+                if await info_btn.count() > 0 or "Inscription non disponible" in row_content:
+                    logger.info("Activity found but registration not open yet")
+                    if self.registration_window is None:
+                        self.registration_window = await fetch_registration_window(parent_row, page)
+                    return RegistrationStatus.NOT_YET_OPEN
 
         return None
 
