@@ -18,6 +18,9 @@ timeout = 600
 # How often to refresh the page while waiting for an activity (seconds)
 refresh_interval = 5.0
 
+# Allow registering on the waiting list if regular spots are full (default: false)
+# waitlist = true
+
 # Domain/category filter (e.g., "Activités aquatiques (Vieux-Longueuil)")
 # Use `uv run aweille browse` to see available domains
 domain = "Activités aquatiques (Vieux-Longueuil)"

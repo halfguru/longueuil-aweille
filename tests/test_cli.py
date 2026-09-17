@@ -130,6 +130,38 @@ age = 30
         assert settings_arg.wait_until_open is False
 
     @patch("longueuil_aweille.__main__.RegistrationBot")
+    def test_register_waitlist_option(self, mock_reg_bot, tmp_path: Path):
+        config = tmp_path / "config.toml"
+        config.write_text("""
+headless = true
+activity_name = "Test Activity"
+
+[[participants]]
+name = "Test User"
+carte_acces = "01234567890123"
+telephone = "5145551234"
+age = 30
+""")
+
+        mock_reg_instance = MagicMock()
+        mock_reg_instance.run = AsyncMock(return_value=RegistrationStatus.SUCCESS)
+        mock_reg_bot.return_value = mock_reg_instance
+
+        # Default CLI has waitlist=True
+        result = runner.invoke(app, ["register", "--config", str(config), "--no-verify"])
+        assert result.exit_code == 0
+        settings_arg = mock_reg_bot.call_args[0][0]
+        assert settings_arg.waitlist is True
+
+        # When explicitly passed --no-waitlist
+        result = runner.invoke(
+            app, ["register", "--config", str(config), "--no-waitlist", "--no-verify"]
+        )
+        assert result.exit_code == 0
+        settings_arg = mock_reg_bot.call_args[0][0]
+        assert settings_arg.waitlist is False
+
+    @patch("longueuil_aweille.__main__.RegistrationBot")
     def test_register_keyboard_interrupt(self, mock_reg_bot, tmp_path: Path):
         config = tmp_path / "config.toml"
         config.write_text("""

@@ -52,6 +52,10 @@ class Settings(BaseSettings):
         default=True,
         description="Wait/standby until registration opens if not open yet",
     )
+    waitlist: bool = Field(
+        default=False,
+        description="Allow waitlist registration if activity regular spots are full",
+    )
     participants: list[Participant] = Field(default_factory=list)
 
     @field_validator("activity_name")

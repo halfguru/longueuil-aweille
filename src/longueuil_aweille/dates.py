@@ -105,9 +105,14 @@ class RegistrationWindow:
     @property
     def is_open(self) -> bool:
         """Check if resident registration is currently open."""
+        return self.check_is_open()
+
+    def check_is_open(self, now: datetime | None = None) -> bool:
+        """Check if resident registration is open at a given datetime."""
         if not self.resident_start:
             return False
-        now = datetime.now()
+        if now is None:
+            now = datetime.now()
         if now < self.resident_start:
             return False
         return not bool(self.resident_end and now > self.resident_end)
