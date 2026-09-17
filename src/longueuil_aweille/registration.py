@@ -378,18 +378,12 @@ class RegistrationBot:
 
                 if await cart_btn.count() > 0:
                     await cart_btn.click()
-                    nav_timeout = 100 if ("mock" in page.url or "127.0.0.1" in page.url) else 10000
                     with suppress(Exception):
-                        await page.wait_for_url("**/PagePanier*", timeout=nav_timeout)
+                        await page.wait_for_url("**/PagePanier*", timeout=10000)
 
                 await page.wait_for_load_state("networkidle")
 
-                is_mock = "mock" in page.url or "127.0.0.1" in page.url
-                if (
-                    not is_mock
-                    and "PagePanier" not in page.url
-                    and "panier" not in (await page.title()).lower()
-                ):
+                if "PagePanier" not in page.url and "panier" not in (await page.title()).lower():
                     logger.error(f"Failed to navigate to cart page. Current URL: {page.url}")
                     return None
 

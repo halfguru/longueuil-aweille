@@ -780,7 +780,48 @@ async def test_try_select_with_schedule_filter():
         <td><input type="image" id="Selecteur2" src="Selecteur.gif"></td>
       </tr>
     </table>
-    <button id="ctlGrille_ctlMenuActionsBas_ctlAppelPanierIdent">Cart</button>
+    <button id="ctlGrille_ctlMenuActionsBas_ctlAppelPanierIdent" onclick="window.location.href='/PagePanier.fr.aspx'">Cart</button>
+    </body></html>"""
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
+
+        async def route_handler(route):
+            if "PagePanier" in route.request.url:
+                await route.fulfill(
+                    body="<html><head><title>Panier</title></head><body>Panier Content</body></html>",
+                    content_type="text/html; charset=utf-8",
+                )
+            else:
+                await route.fulfill(body=html, content_type="text/html; charset=utf-8")
+
+        await page.route(re.compile(r".*"), route_handler)
+        await page.goto("http://mock-test.local/search")
+
+        # Looking specifically for 10:25
+        settings = Settings(activity_name="Parent et enfant 3", schedule="10:25")
+        bot = RegistrationBot(settings)
+        result = await bot._try_select_on_page(page)
+        assert result == RegistrationStatus.SUCCESS
+        await browser.close()
+
+
+async def test_navigate_to_search_full():
+    from longueuil_aweille.navigation import navigate_to_search
+
+    search_html = """<html><body>
+    <button id="c-p-bn">Accepter cookies</button>
+    <a href="#domaines">Domaines</a>
+    <a href="#dispos">Disponibilités</a>
+    <li class="rtLI">
+        <span>Activités aquatiques</span>
+        <input type="checkbox" class="rtChk">
+    </li>
+    <input type="radio" name="ctlSelDisponibilite" value="ctlDispoSeulement">
+    <input type="text" id="ctlBlocRecherche_ctlMotsCles_ctlMotsCle">
+    <button id="ctlBlocRecherche_ctlRechercher" onclick="const t = document.createElement('table'); t.innerHTML = '<tr><td>result</td></tr>'; document.body.appendChild(t);">Rechercher</button>
     </body></html>"""
 
     async with async_playwright() as pw:
@@ -790,13 +831,20 @@ async def test_try_select_with_schedule_filter():
 
         await page.route(
             re.compile(r".*"),
-            lambda route: route.fulfill(body=html, content_type="text/html; charset=utf-8"),
+            lambda route: route.fulfill(body=search_html, content_type="text/html; charset=utf-8"),
         )
-        await page.goto("http://mock-test.local/search")
 
-        # Looking specifically for 10:25
-        settings = Settings(activity_name="Parent et enfant 3", schedule="10:25")
-        bot = RegistrationBot(settings)
-        result = await bot._try_select_on_page(page)
-        assert result == RegistrationStatus.SUCCESS
+        await navigate_to_search(
+            page,
+            registration_url="http://mock-test.local/portal",
+            activity_name="Parent et enfant 3",
+            domain="Activités aquatiques",
+            available_only=True,
+        )
+
+        # Verify input was filled and table was populated
+        input_val = await page.locator("#ctlBlocRecherche_ctlMotsCles_ctlMotsCle").input_value()
+        assert input_val == "Parent et enfant 3"
+        table_count = await page.locator("table").count()
+        assert table_count > 0
         await browser.close()
