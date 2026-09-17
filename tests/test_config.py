@@ -160,3 +160,11 @@ def test_settings_from_toml_invalid_timeout(tmp_path):
 def test_settings_with_schedule():
     settings = Settings(activity_name="Parent et enfant 3", schedule="10:25")
     assert settings.schedule == "10:25"
+
+
+def test_settings_with_waitlist():
+    settings_default = Settings(activity_name="Parent et enfant 3")
+    assert settings_default.waitlist is False
+
+    settings_waitlist = Settings(activity_name="Parent et enfant 3", waitlist=True)
+    assert settings_waitlist.waitlist is True

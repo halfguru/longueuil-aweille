@@ -21,6 +21,7 @@ Automate municipal activity registration for the City of Longueuil recreation we
 - Credential verification before registration
 - Multiple participant support
 - Specific time slot / schedule filtering
+- Waitlist registration support when regular spots are full
 - Simple TOML configuration
 - CLI with rich output
 - Robust retry logic with exponential backoff for flaky networks
@@ -73,6 +74,10 @@ uv run aweille register --headless
 
 # Custom timeout and config
 uv run aweille register --timeout 300 --config my-config.toml
+
+# Allow or disallow waitlist registration if regular spots are full (defaults to --waitlist in CLI)
+uv run aweille register --waitlist
+uv run aweille register --no-waitlist
 
 # Verify credentials separately
 uv run aweille verify --carte 01234567890123 --tel 5145551234

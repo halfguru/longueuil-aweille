@@ -56,10 +56,12 @@ def test_registration_window_is_open():
         resident_end=datetime(2026, 9, 30, 8, 0),
     )
     # Before
-    assert not window.is_open and window.seconds_until_open(datetime(2026, 9, 16, 18, 0)) == 1800.0
+    assert not window.check_is_open(now=datetime(2026, 9, 16, 18, 0))
+    assert window.seconds_until_open(datetime(2026, 9, 16, 18, 0)) == 1800.0
 
     # During (simulate now)
     now_during = datetime(2026, 9, 16, 18, 35)
+    assert window.check_is_open(now=now_during)
     assert window.seconds_until_open(now_during) == 0.0
 
 

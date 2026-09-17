@@ -75,6 +75,11 @@ def register(
         "--wait/--no-wait",
         help="Wait/standby until registration opens if not open yet",
     ),
+    waitlist: bool = typer.Option(
+        True,
+        "--waitlist/--no-waitlist",
+        help="Register on waiting list if activity is full",
+    ),
 ) -> None:
     """Run the registration bot."""
     console.print()
@@ -87,6 +92,8 @@ def register(
         settings.timeout = timeout
     if wait is not None:
         settings.wait_until_open = wait
+    if waitlist is not None:
+        settings.waitlist = waitlist
 
     if not settings.participants:
         console.print("[red]Error: No participants configured[/red]")
@@ -171,7 +178,7 @@ def register(
         case RegistrationStatus.ACTIVITY_FULL:
             console.print(
                 Panel(
-                    "[bold red]Activity is full - no spots available[/]",
+                    "[bold red]Activity is full - no spots available[/]\n[dim]Tip: use --waitlist to register on the waiting list[/dim]",
                     border_style="red",
                 )
             )
