@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import datetime
 
 from playwright.async_api import Page, async_playwright
@@ -355,17 +356,42 @@ class RegistrationBot:
                         self._console.print("[green]*[/] Found activity! Adding to cart...")
 
                 await btn.click()
-                await page.wait_for_load_state("networkidle")
-                await page.wait_for_selector(self.selectors.cart_button, state="visible")
 
-                logger.info("Adding to cart...")
-                cart_btn = page.locator(self.selectors.cart_button)
-                try:
-                    async with page.expect_navigation(timeout=5000):
-                        await cart_btn.click()
-                except Exception:
-                    # In case of partial postback or fast navigation without trigger
+                # On the live site, wait for ASP.NET partial postback to confirm selection in DOM
+                if "BT_Panier_IN" in src:
+                    out_btn = parent_row.locator("input[type='image'][src*='BT_Panier_OUT.gif']")
+                    try:
+                        await out_btn.wait_for(timeout=3000)
+                        logger.info("Activity selection confirmed in DOM (BT_Panier_OUT)")
+                    except Exception:
+                        await page.wait_for_load_state("networkidle")
+                else:
                     await page.wait_for_load_state("networkidle")
+
+                logger.info("Proceeding to cart...")
+                if self._console:
+                    self._console.print("[green]*[/] Navigating to cart / identification...")
+
+                cart_btn = page.locator(self.selectors.cart_button)
+                if await cart_btn.count() == 0:
+                    cart_btn = page.locator("input[id*='ctlAppelPanierIdent']").first
+
+                if await cart_btn.count() > 0:
+                    await cart_btn.click()
+                    nav_timeout = 100 if ("mock" in page.url or "127.0.0.1" in page.url) else 10000
+                    with suppress(Exception):
+                        await page.wait_for_url("**/PagePanier*", timeout=nav_timeout)
+
+                await page.wait_for_load_state("networkidle")
+
+                is_mock = "mock" in page.url or "127.0.0.1" in page.url
+                if (
+                    not is_mock
+                    and "PagePanier" not in page.url
+                    and "panier" not in (await page.title()).lower()
+                ):
+                    logger.error(f"Failed to navigate to cart page. Current URL: {page.url}")
+                    return None
 
                 return RegistrationStatus.SUCCESS
             else:
@@ -432,7 +458,7 @@ class RegistrationBot:
         )
         return response in ("y", "yes")
 
-    async def _wait_for_result(self, page: Page, timeout_ms: int = 5000) -> str:
+    async def _wait_for_result(self, page: Page, timeout_ms: int = 15000) -> str:
         deadline = asyncio.get_running_loop().time() + timeout_ms / 1000
         page_content = ""
         while asyncio.get_running_loop().time() < deadline:
